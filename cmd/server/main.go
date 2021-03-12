@@ -1,5 +1,5 @@
 /*
-	Tic-Tac-Toe, a multiplayer Tic-Tac-Toe client.
+	Tic-Tac-Toe, a multiplayer Tic-Tac-Toe server
     Copyright (C) 2021	cyberpunkcoder
 
 	github.com/cyberpunkcoder
@@ -26,12 +26,14 @@ import (
 	"log"
 	"net"
 	"net/http"
+
+	// I tried so so hard to get gRPC to work, I couldn't in time :(
 	"net/rpc"
 )
 
 var (
 	// My favorite port 27960 because old quake and wolfenstein :)
-	gamePort = ":27960"
+	gamePort = 27960
 	players  []Player
 )
 
@@ -44,21 +46,23 @@ type Player struct {
 }
 
 func main() {
-	var ttt = new(TTT)
+	ttt := new(TTT)
 	err := rpc.Register(ttt)
 
 	if err != nil {
-		log.Fatal("Failed to register API: ", err)
+		log.Fatal("Failed to register rpc: ", err)
 	}
 
 	rpc.HandleHTTP()
-	lis, err := net.Listen("tcp", gamePort)
+
+	portString := fmt.Sprint(gamePort)
+	lis, err := net.Listen("tcp", ":"+portString)
 
 	if err != nil {
-		log.Fatal("Failed to listen on port "+gamePort+": ", err)
+		log.Fatal("Failed to listen on port "+portString+": ", err)
 	}
 
-	log.Println("Server started on port " + gamePort)
+	log.Println("Server started on port " + portString)
 	err = http.Serve(lis, nil)
 
 	if err != nil {
@@ -68,21 +72,29 @@ func main() {
 }
 
 // NewPlayer of Tic-Tac-Toe game
-func (a *TTT) NewPlayer(name string, reply *Player) error {
+func (a *TTT) NewPlayer(name string, player *Player) error {
 
+	// Check if name is empty
+	if name == "" {
+		return fmt.Errorf("name cannot be empty")
+	}
+	// Check if name is too long
+	if len(name) > 32 {
+		return fmt.Errorf("name must be under 32 characters")
+	}
 	// Check if a player with same name exists
 	for _, p := range players {
-		if p.Name == name {
+		if name == p.Name {
 			log.Printf("Player %s could not join, name in use", name)
-			return fmt.Errorf("Player name '%v' is in use", name)
+			return fmt.Errorf("name \"%s\" is already in use", name)
 		}
 	}
 
 	// Create new player and add to players
 	newPlayer := Player{name}
 	players = append(players, newPlayer)
-	reply = &newPlayer
 
+	// Log player join to console
 	log.Printf("Player %s joined", name)
 
 	return nil
