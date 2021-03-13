@@ -27,16 +27,34 @@ import (
 	"time"
 )
 
-// Player of Tic-Tac-Toe
+// State of player tic-tac-toe world
+type State struct {
+	Player
+	Game     Game
+	GameList []string
+}
+
+// Player of tic-tac-toe
 type Player struct {
-	Name string
+	Name   string
+	Symbol rune
+}
+
+// Game of tic-tac-toe
+type Game struct {
+	Name    string
+	Players []Player
+	Board   []rune
+	Turn    int
 }
 
 var (
 	serverAddr = "localhost"
 	gamePort   = 27960
-	server     *rpc.Client
-	player     Player
+	pollRate   = 1000
+
+	server *rpc.Client
+	state  State
 )
 
 func main() {
@@ -63,27 +81,28 @@ func Login() {
 		name, _ := reader.ReadString('\n')
 		name = strings.ReplaceAll(name, "\n", "")
 
-		err := server.Call("TTT.NewPlayer", name, &player)
+		err := server.Call("API.Connect", name, &state)
 
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		fmt.Println("Welcome ", player.Name, "!")
+		fmt.Println("Welcome " + name + "!")
 		break
 	}
 }
 
+// Poll the server to maintain a connection
 func Poll() {
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Duration(pollRate * int(time.Millisecond)))
 	poller := make(chan struct{})
 
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
-				err := server.Call("TTT.Poll", player.Name, &Player{})
+				err := server.Call("API.Poll", state.Name, &state)
 				if err != nil {
 					fmt.Println(err)
 					close(poller)
@@ -114,7 +133,7 @@ func Menu() {
 
 func games() {
 	var games []Game
-	err := server.Call("TTT.GetGames", &player, &games)
+	err := server.Call("API.GetGames", &player, &games)
 
 	if err != nil {
 		fmt.Println(err)
