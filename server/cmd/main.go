@@ -26,6 +26,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	// I tried so so hard to get gRPC to work, I couldn't in time :(
@@ -33,25 +34,24 @@ import (
 	"net/rpc"
 )
 
-// State of player tic-tac-toe world
-type State struct {
-	Player
-	Game     Game
-	GameList []string
-}
-
 // Player of tic-tac-toe
 type Player struct {
-	Name   string
-	Symbol rune
+	Name string
 }
 
 // Game of tic-tac-toe
 type Game struct {
-	Name    string
-	Players []Player
-	Board   []rune
-	Turn    int
+	Name       string
+	Players    map[string]Player
+	Board      [][]string
+	Turn       int
+	MaxPlayers int
+}
+
+// State of player in tic-tac-toe
+type State struct {
+	Game  *Game
+	Games []Game
 }
 
 // Client connected to server
@@ -62,9 +62,8 @@ type Client struct {
 }
 
 var (
-	pollRate    = 1000  // Poll rate between client and server in miliseconds
-	pollTimeout = 5000  // Timeout for poll between client and server in miliseconds
-	gamePort    = 27960 // My favorite port 27960 because old quake and wolfenstein :)
+	pollTimeout = time.Duration(2 * time.Second) // Timeout for poll between client and server
+	gamePort    = 27960                          // My favorite port 27960 because old quake and wolfenstein :)
 	games       []Game
 	clients     []*Client
 )
@@ -102,44 +101,45 @@ func main() {
 
 // Connect to API
 func (a *API) Connect(name string, player *Player) error {
+	// Remove any unwanted characters
+	player.Name = strings.ReplaceAll(name, "\n", "")
 
-	if name == "" {
+	// Ensure name meets criteria
+	if player.Name == "" {
 		return fmt.Errorf("name cannot be empty")
 	}
-	if len(name) > 32 {
+	if len(player.Name) > 32 {
 		return fmt.Errorf("name must be under 32 characters")
 	}
 
 	for _, c := range clients {
-		if c.Name == name {
+		if c.Name == player.Name {
 			if c.LoggedIn {
-				return fmt.Errorf("player %s is already logged in", name)
+				return fmt.Errorf("player \"%s\" is already logged in", player.Name)
 			}
 			// Client has returned from previous login
 			c.LoggedIn = true
 			c.LastPoll = time.Now()
 
-			log.Printf("Client %s logged in", name)
+			log.Printf("Player \"%s\" logged in", player.Name)
 
 			return nil
 		}
 	}
 
 	// Register new client
-	player.Name = name
 	clients = append(clients, &Client{
 		Player:   player,
 		LastPoll: time.Now(),
 		LoggedIn: true,
 	})
-
-	log.Printf("Client %s registered", name)
+	log.Printf("Player \"%s\" registered", player.Name)
 
 	return nil
 }
 
 func checkTimeout() {
-	ticker := time.NewTicker(time.Duration(pollRate * int(time.Millisecond)))
+	ticker := time.NewTicker(pollTimeout)
 	checker := make(chan struct{})
 
 	// Async loop function
@@ -150,12 +150,10 @@ func checkTimeout() {
 				for _, c := range clients {
 					if c.LoggedIn {
 						// Check if client has timed out
-						fmt.Println(time.Since(c.LastPoll))
-						fmt.Println(time.Duration(pollTimeout * int(time.Millisecond)))
-						if time.Since(c.LastPoll) > time.Duration(pollTimeout*int(time.Millisecond)) {
+						if time.Since(c.LastPoll) > pollTimeout {
 							// Logout client
 							c.LoggedIn = false
-							log.Println("Client " + c.Name + " timed out")
+							log.Println("Player " + c.Name + " timed out")
 						}
 					}
 				}
@@ -167,35 +165,58 @@ func checkTimeout() {
 	}()
 }
 
-func (a *API) Poll(name string, state *State) error {
+func (a *API) GetState(player Player, state *State) error {
 	for _, c := range clients {
-		if c.Name == name {
+		if c.Name == player.Name {
 			c.LastPoll = time.Now()
+			state.Games = games
+
+			// Check if player is in a game
+			for _, g := range state.Games {
+				for _, p := range g.Players {
+					if p.Name == player.Name {
+						state.Game = &g
+						return nil
+					}
+				}
+			}
+			state.Game = nil
 			return nil
 		}
 	}
-	return nil
+	return fmt.Errorf("player \"%s\" is already logged in", player.Name)
 }
 
-func (a *API) NewGame(player Client, game *Game) error {
-
+func (a *API) NewGame(player Player, state *State) error {
+	// Check if player is already in game
+	for _, g := range games {
+		for _, p := range g.Players {
+			if p.Name == player.Name {
+				log.Printf("Player \"%s\" failed to create game, already in game \"%s\"", p.Name, g.Name)
+				return fmt.Errorf("player \"%s\" is already in game \"%s\"", p.Name, g.Name)
+			}
+		}
+	}
+	// Create a new game struct
+	game := Game{
+		Name:       player.Name + "'s game",
+		Players:    map[string]Player{"X": player},
+		Board:      [][]string{{" ", " ", " "}, {" ", " ", " "}, {" ", " ", " "}},
+		MaxPlayers: 2,
+	}
 	// Check if game already exists
 	for _, g := range games {
 		// Check if game name is already being used
 		if g.Name == game.Name {
-			log.Printf("Client %s could create game with name \"%s\", already exists", player.Name, game.Name)
-			return fmt.Errorf("game with name \"%s\" already exists", game.Name)
+			log.Printf("Player \"%s\" failed to create game \"%s\", already exists", player.Name, game.Name)
+			return fmt.Errorf("game \"%s\" already exists", game.Name)
 		}
 	}
+	// Append new game to list of games
+	games = append(games, game)
 
 	// Log game creation to console
-	log.Printf("Client %s created new game \"%s\"", player.Name, game.Name)
-
-	return nil
-}
-
-// GetGameState of tic-tac-toe game
-func (a *API) GetGameState(player *Client, game *Game) error {
+	log.Printf("Player \"%s\" created game \"%s\"", player.Name, game.Name)
 
 	return nil
 }
