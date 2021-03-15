@@ -108,6 +108,7 @@ func Register() {
 			continue
 		}
 
+		// Render initial game state
 		UpdateState()
 		Render()
 
@@ -115,6 +116,7 @@ func Register() {
 	}
 }
 
+// Update state of client with data
 func UpdateState() {
 	var err error
 	var newGame Game
