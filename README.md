@@ -6,7 +6,7 @@
 https://youtu.be/X8L_hQv7Qnk
 
 ## Quick Start
-```git clone https://github.com/cyberpunkcoder/tic-tac-toe.git && cd cd tic-tac-toe```
+```git clone https://github.com/cyberpunkcoder/tic-tac-toe.git && cd tic-tac-toe```
 1) Start the TTT backend with ```go run backend/cmd/main.go```
 2) Open another shell in the same directory
 3) Start a TTT frontend with ```go run backend/cmd/main.go```
