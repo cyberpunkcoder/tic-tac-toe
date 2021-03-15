@@ -101,7 +101,7 @@ func Register() {
 		fmt.Println()
 
 		// Register with server retrieve user struct
-		err := server.Call("API.Register", name, &user)
+		err := server.Call("TTT.Register", name, &user)
 
 		if err != nil {
 			fmt.Println("Failed to register:", err)
@@ -120,14 +120,14 @@ func UpdateState() {
 	var newGame Game
 	var newLobby Lobby
 
-	err = server.Call("API.GetGame", user, &newGame)
+	err = server.Call("TTT.GetGame", user, &newGame)
 
 	if err != nil {
 		fmt.Println("Failed to get game:", err)
 		os.Exit(1)
 	}
 
-	err = server.Call("API.GetLobby", user, &newLobby)
+	err = server.Call("TTT.GetLobby", user, &newLobby)
 
 	if err != nil {
 		fmt.Println("Failed to get lobby:", err)
@@ -202,7 +202,7 @@ func Render() {
 				}
 				fmt.Println("YOU WON!")
 			} else {
-				fmt.Println(game.Winner, "won, you lost ...")
+				fmt.Println(game.Winner.Name, "won, you lost ...")
 			}
 			fmt.Println("\n" + prompt)
 			return
@@ -217,7 +217,7 @@ func Render() {
 		turn := game.Players[game.Turn%len(game.Players)]
 
 		if turn.Name == user.Name {
-			prompt += " < x y coordinates>\t\t- mark spot on board (example: a 1)\n\n"
+			prompt += " <x y coordinates>\t- mark spot on board (example: a 1)\n\n"
 			prompt += "YOUR TURN"
 		} else {
 			prompt += "\n" + turn.Name + "'s turn ...\n"
@@ -239,7 +239,7 @@ func Render() {
 	prompt := "\n--- COMMANDS ---\n"
 	prompt += " exit\t\t\t- exit program\n"
 	prompt += " create\t\t\t- make new lobby game\n"
-	prompt += " join <player's name>\t- join lobby game (example: join bob)\n"
+	prompt += " join <player name>\t- join lobby game (example: join bob)\n"
 
 	fmt.Println(prompt)
 }
@@ -260,13 +260,13 @@ func Input() {
 		case "exit":
 			return
 		case "quit":
-			err = server.Call("API.QuitGame", user, &Game{})
+			err = server.Call("TTT.QuitGame", user, &Game{})
 
 			if err != nil {
 				fmt.Println("Failed to quit game:", err)
 			}
 		case "create":
-			err = server.Call("API.NewGame", user, &Game{})
+			err = server.Call("TTT.NewGame", user, &Game{})
 
 			if err != nil {
 				fmt.Println("Failed to create game:", err)
@@ -277,7 +277,7 @@ func Input() {
 				continue
 			}
 			friend := User{strings.ReplaceAll(cmd[1], "\n", "")}
-			err = server.Call("API.JoinGame", []User{user, friend}, &Game{})
+			err = server.Call("TTT.JoinGame", []User{user, friend}, &Game{})
 
 			if err != nil {
 				fmt.Println("Failed to join game:", err)
@@ -293,7 +293,7 @@ func Input() {
 					for x, s := range alpha {
 						if s == xRune {
 							y := int(yRune-'0') - 1
-							err = server.Call("API.NewMark", Mark{user, x, y}, &Game{})
+							err = server.Call("TTT.NewMark", Mark{user, x, y}, &Game{})
 
 							if err != nil {
 								fmt.Println("Failed to create mark:", err)

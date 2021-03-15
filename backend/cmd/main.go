@@ -79,12 +79,14 @@ var (
 	sessions       []*Session
 )
 
-// API server for tic-tac-toe RPC interface
-type API int
+// TTT server for tic-tac-toe RPC interface
+type TTT int
 
 func main() {
-	api := new(API)
-	err := rpc.Register(api)
+	fmt.Println("--- TIC-TAC-TOE BACKEND ---")
+
+	ttt := new(TTT)
+	err := rpc.Register(ttt)
 
 	if err != nil {
 		log.Fatal("Failed to register rpc:", err)
@@ -107,11 +109,11 @@ func main() {
 	if err != nil {
 		log.Fatal("Failed to serve http server:", err)
 	}
-
 }
 
 // AuditSessions for timeouts
 func AuditSessions() {
+
 	ticker := time.NewTicker(sessionTimeout)
 	checker := make(chan struct{})
 
@@ -166,7 +168,7 @@ func (u *User) kick() {
 				g.Players = append(g.Players[:i], g.Players[i+1:]...)
 
 				// If only one player remaining, set to winner
-				if g.Turn >= 0 && len(g.Players) == 1 {
+				if g.Turn >= 0 && len(g.Players) == 1 && g.Winner == nil {
 					g.Winner = &g.Players[0]
 				}
 				return
@@ -186,30 +188,9 @@ func (u *User) game() *Game {
 	return nil
 }
 
-func (g *Game) winner() *Player {
-	// Check horizontals
-	for x := 0; x < len(g.Board); x++ {
-		for _, symbol := range g.Board[x] {
-			if symbol != g.Board[0][0] {
-				break
-			}
-			return g.playerWithSymbol(symbol)
-		}
-	}
-	return nil
-}
-
-func (g *Game) playerWithSymbol(s string) *Player {
-	for _, p := range g.Players {
-		if p.Symbol == s {
-			return &p
-		}
-	}
-	return nil
-}
-
 // Register client with server
-func (a *API) Register(name string, user *User) error {
+func (a *TTT) Register(name string, user *User) error {
+
 	// Remove any unwanted characters
 	user.Name = strings.ReplaceAll(name, "\n", "")
 
@@ -248,17 +229,20 @@ func (a *API) Register(name string, user *User) error {
 }
 
 // GetGame user is in
-func (a *API) GetGame(user User, game *Game) error {
+func (a *TTT) GetGame(user User, game *Game) error {
+
 	// Ensure user is registered and logged in
 	if err := user.auth(); err != nil {
 		return err
 	}
+
 	// Get game state
 	for _, g := range games {
 		// Check if user is in game
 		for _, p := range g.Players {
 			if p.Name == user.Name {
-				// Game deep copy of tic-tac-toe
+
+				// Deep copy of tic-tac-toe
 				game.Turn = g.Turn
 				game.Players = g.Players
 				game.MaxPlayers = g.MaxPlayers
@@ -273,11 +257,13 @@ func (a *API) GetGame(user User, game *Game) error {
 }
 
 // GetLobby of online games for user
-func (a *API) GetLobby(user User, lobby *Lobby) error {
+func (a *TTT) GetLobby(user User, lobby *Lobby) error {
+
 	// Ensure user is registered and logged in
 	if err := user.auth(); err != nil {
 		return err
 	}
+
 	for _, g := range games {
 
 		// If game hasn't started and isn't full
@@ -296,7 +282,7 @@ func (a *API) GetLobby(user User, lobby *Lobby) error {
 }
 
 // NewGame of classic two user tic-tac-toe
-func (a *API) NewGame(user User, game *Game) error {
+func (a *TTT) NewGame(user User, game *Game) error {
 
 	// Ensure user is registered and logged in
 	if err := user.auth(); err != nil {
@@ -306,7 +292,7 @@ func (a *API) NewGame(user User, game *Game) error {
 	// Check if user is already in game
 	if user.game() != nil {
 		log.Printf("User \"%s\" failed to create game, already in a game", user.Name)
-		return fmt.Errorf("user \"%s\" is already in a game", user.Name)
+		return fmt.Errorf("you are already in a game")
 	}
 
 	// New two player game
@@ -325,24 +311,28 @@ func (a *API) NewGame(user User, game *Game) error {
 }
 
 // JoinGame of tic-tac-toe on server
-func (a *API) JoinGame(args []User, game *Game) error {
+func (a *TTT) JoinGame(args []User, game *Game) error {
+
 	// Ensure that proper arguments are given
 	if len(args) != 2 {
 		return fmt.Errorf("invalid args for JoinGame([]User{you, friend}, *Game)")
 	}
+
 	// Ensure user is registered and logged in
 	if err := args[0].auth(); err != nil {
 		return err
 	}
 
-	// Check if user is already in game
 	for _, g := range games {
 		for _, p := range g.Players {
+
+			// Check if user is already in game
 			if p.Name == args[0].Name {
 				log.Printf("User \"%s\" failed to join a game, already in a game", args[0].Name)
-				return fmt.Errorf("user \"%s\" is already in a game", args[0].Name)
+				return fmt.Errorf("you are already in a game")
 			}
-			// If you find the game along the way, store it in game
+
+			// Check if game is the one we are looking for
 			if p.Name == args[1].Name {
 				if len(g.Players) == g.MaxPlayers {
 					log.Printf("User \"%s\" failed to join a game with user \"%s\", game full", args[0].Name, args[1].Name)
@@ -369,7 +359,7 @@ func (a *API) JoinGame(args []User, game *Game) error {
 }
 
 // NewMark on tic-tac-toe board
-func (a *API) NewMark(mark Mark, unused *Game) error {
+func (a *TTT) NewMark(mark Mark, unused *Game) error {
 
 	// Ensure user is registered and logged in
 	if err := mark.User.auth(); err != nil {
@@ -386,9 +376,14 @@ func (a *API) NewMark(mark Mark, unused *Game) error {
 					return fmt.Errorf("game has not started")
 				}
 
-				// Make sure it is your turn
+				// Make sure game is not already won
+				if g.Winner != nil {
+					return fmt.Errorf("game is already won")
+				}
+
+				// Make sure it's your turn
 				if mark.User.Name != g.Players[g.Turn%len(g.Players)].Name {
-					return fmt.Errorf("it is not your turn")
+					return fmt.Errorf("it's not your turn")
 				}
 
 				// Make sure mark is within board
@@ -399,7 +394,62 @@ func (a *API) NewMark(mark Mark, unused *Game) error {
 					if spot == " " {
 						g.Board[mark.X][mark.Y] = p.Symbol
 						g.Turn++
+
 						log.Printf("user \"%s\" marked \"%s\" at %d,%d", mark.User.Name, p.Symbol, mark.X, mark.Y)
+
+						// Check if too few moves to win
+						if g.Turn < len(g.Board)*len(g.Players)-1 {
+							return nil
+						}
+
+						// Check horizontal win
+						for x := 0; x < len(g.Board); x++ {
+							for y, symbol := range g.Board[x] {
+								if symbol != p.Symbol {
+									break
+								}
+								if y == len(g.Board[x])-1 {
+									g.Winner = &p
+									return nil
+								}
+							}
+						}
+
+						// Check vertical win
+						for y := 0; y < len(g.Board[0]); y++ {
+							for x := 0; x < len(g.Board); x++ {
+								if g.Board[x][y] != p.Symbol {
+									break
+								}
+								if x == len(g.Board)-1 {
+									g.Winner = &p
+									return nil
+								}
+							}
+						}
+
+						// Check diagonal win
+						for x, y := 0, 0; x < len(g.Board); x, y = x+1, y+1 {
+							if g.Board[x][y] != p.Symbol {
+								break
+							}
+							if x == len(g.Board)-1 {
+								g.Winner = &p
+								return nil
+							}
+						}
+
+						// Check counter diagonal win
+						for x, y := 0, len(g.Board)-1; x < len(g.Board) && y >= 0; x, y = x+1, y-1 {
+							if g.Board[x][y] != p.Symbol {
+								break
+							}
+							if x == len(g.Board)-1 {
+								g.Winner = &p
+								return nil
+							}
+						}
+						// Player did not win, return
 						return nil
 					}
 					return fmt.Errorf("mark \"%s\" already exists at %d,%d", spot, mark.X, mark.Y)
@@ -412,7 +462,7 @@ func (a *API) NewMark(mark Mark, unused *Game) error {
 }
 
 // QuitGame of tic-tac-toe
-func (a *API) QuitGame(user User, unused *Game) error {
+func (a *TTT) QuitGame(user User, unused *Game) error {
 
 	// Ensure user is registered and logged in
 	if err := user.auth(); err != nil {
