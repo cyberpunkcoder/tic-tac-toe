@@ -228,12 +228,12 @@ func Render() {
 	}
 
 	// Not in game, render lobby
-	fmt.Println("--- GAME LOBBY ---")
+	fmt.Print("--- GAME LOBBY ---\n\n")
 	if len(lobby.Users) == 0 {
-		fmt.Println("\n No games found ...")
+		fmt.Println(" No games found ...")
 	} else {
 		for _, l := range lobby.Users {
-			fmt.Println("\n Game found: " + l.Name + "'s game")
+			fmt.Println(" Game found: " + l.Name + "'s game")
 		}
 	}
 	prompt := "\n--- COMMANDS ---\n"
