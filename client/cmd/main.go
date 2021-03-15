@@ -20,22 +20,23 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log"
 	"net/rpc"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 )
 
 // Player of tic-tac-toe
 type Player struct {
-	Name string
+	Name   string
+	Symbol string
 }
 
 // Game of tic-tac-toe
 type Game struct {
 	Name       string
-	Players    map[string]Player
+	Players    []Player
 	Board      [][]string
 	Turn       int
 	MaxPlayers int
@@ -61,16 +62,18 @@ func main() {
 	server, err = rpc.DialHTTP("tcp", serverAddr+":"+fmt.Sprint(gamePort))
 
 	if err != nil {
-		log.Fatal("Failed to connect to server at ", serverAddr, ":", gamePort, " : ", err)
+		fmt.Println("Failed to connect to server at ", serverAddr, ":", gamePort, " :", err)
+		os.Exit(1)
 	}
 
-	Login()
+	Register()
 	Render()
-	UpdateState()
-	Menu()
+	MaintainState()
+	Input()
 }
 
-func Login() {
+// Connect to server
+func Register() {
 	fmt.Println("--- TIC-TAC-TOE ---")
 
 	// Get player name and register
@@ -82,11 +85,11 @@ func Login() {
 
 		fmt.Println()
 
-		// Connect to server and retrieve player struct
-		err := server.Call("API.Connect", name, &player)
+		// Register with server retrieve player struct
+		err := server.Call("API.Register", name, &player)
 
 		if err != nil {
-			fmt.Println(err)
+			fmt.Println("Failed to register:", err)
 			continue
 		}
 
@@ -94,13 +97,15 @@ func Login() {
 		err = server.Call("API.GetState", player, &state)
 
 		if err != nil {
-			log.Fatal(err)
+			fmt.Println("Failed to get state:", err)
+			os.Exit(1)
 		}
 
 		break
 	}
 }
 
+// Render client state
 func Render() {
 	// If not in game, render lobby
 	if state.Game == nil {
@@ -116,27 +121,58 @@ func Render() {
 					}
 					players++
 				}
-				fmt.Printf("\tName: %s\tPlayers: %d/%d\n", g.Name, players, len(g.Players))
+				fmt.Printf(" Name: %s\tPlayers: %d/%d\n", g.Name, players, len(g.Players))
 			}
 		}
 		prompt := "\n--- COMMANDS ---\n"
-		prompt += "\tquit\t\t\t- exit game\n"
-		prompt += "\tvsai\t\t\t- play against a computer\n"
-		prompt += "\tcreate\t\t\t- make new lobby game\n"
-		prompt += "\tjoin <game name>\t- join lobby game\n"
+		prompt += " exit\t\t\t- exit program\n"
+		prompt += " create\t\t\t- make new lobby game\n"
+		prompt += " join <game name>\t- join lobby game\n"
 
 		fmt.Println(prompt)
 		return
 	}
-	// Render game
+	// Render game header
+	fmt.Println("--- TIC-TAC-TOE GAME ---")
+	fmt.Println("Name:", state.Game.Name)
+	for _, p := range state.Game.Players {
+		fmt.Printf("Player: %s\tSymbol: %s\n", p.Name, p.Symbol)
+	}
 
+	// Render board (I could have made a dynamically rendered board but this was faster haha)
+	board := "\n    1   2   3\n"
+	board += "  ╔═══╦═══╦═══╗\n"
+	board += "A ║ " + state.Game.Board[0][0] + " ║ " + state.Game.Board[0][1] + " ║ " + state.Game.Board[0][2] + " ║\n"
+	board += "  ╠═══╬═══╬═══╣\n"
+	board += "B ║ " + state.Game.Board[1][0] + " ║ " + state.Game.Board[1][1] + " ║ " + state.Game.Board[1][2] + " ║\n"
+	board += "  ╠═══╬═══╬═══╣\n"
+	board += "C ║ " + state.Game.Board[2][0] + " ║ " + state.Game.Board[2][1] + " ║ " + state.Game.Board[2][2] + " ║\n"
+	board += "  ╚═══╩═══╩═══╝\n"
+
+	fmt.Println(board)
+
+	prompt := "--- COMMANDS ---\n"
+	prompt += " exit\t\t\t- exit program\n"
+	prompt += " quit\t\t\t- quit game\n"
+
+	// Check who's turn it is
+	turn := state.Game.Players[state.Game.Turn%len(state.Game.Players)]
+
+	if player.Name == turn.Name {
+		prompt += " <coordinates>\t\t- mark a spot on the board (example: A1)\n\n"
+		prompt += "YOUR TURN"
+	} else {
+		prompt += "\n" + turn.Name + "'s turn ...\n"
+	}
+	fmt.Println(prompt)
 }
 
-// UpdateState of client with data from server
-func UpdateState() {
+// MaintainState of client with data from server
+func MaintainState() {
 	ticker := time.NewTicker(pollRate)
 	poller := make(chan struct{})
 
+	// Asynchronous state update from server
 	go func() {
 		for {
 			select {
@@ -145,10 +181,10 @@ func UpdateState() {
 				err := server.Call("API.GetState", player, &state)
 
 				if err != nil {
-					fmt.Println(err)
-					close(poller)
+					fmt.Println("Failed to get state:", err)
+					os.Exit(1)
 				}
-				// State has changed, render changes
+				// Check for any changes in state
 				if !reflect.DeepEqual(oldState, state) {
 					Render()
 				}
@@ -160,13 +196,40 @@ func UpdateState() {
 	}()
 }
 
-func Menu() {
+// Input handler function
+func Input() {
 	for {
 		reader := bufio.NewReader(os.Stdin)
-		cmd, _ := reader.ReadString('\n')
+		input, _ := reader.ReadString('\n')
 
-		if cmd == "quit" {
-			break
+		fmt.Println()
+
+		input = strings.ReplaceAll(input, "\n", "")
+		command := strings.SplitN(input, " ", 2)
+
+		switch command[0] {
+		case "exit":
+			return
+		case "create":
+			err := server.Call("API.NewGame", player, &state)
+
+			if err != nil {
+				fmt.Println("Failed to create game:", err)
+			}
+		case "join":
+			if len(command) != 2 {
+				fmt.Println("Invalid command, use the format: join <game name>")
+				continue
+			}
+			err := server.Call("API.JoinGame", command[1], &state)
+
+			if err != nil {
+				fmt.Println("Failed to join game:", err)
+				continue
+			}
+		case "":
+		default:
+			fmt.Println("Command", command[0], "not recognized")
 		}
 	}
 }

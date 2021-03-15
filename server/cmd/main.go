@@ -36,13 +36,14 @@ import (
 
 // Player of tic-tac-toe
 type Player struct {
-	Name string
+	Name   string
+	Symbol string
 }
 
 // Game of tic-tac-toe
 type Game struct {
 	Name       string
-	Players    map[string]Player
+	Players    []Player
 	Board      [][]string
 	Turn       int
 	MaxPlayers int
@@ -76,7 +77,7 @@ func main() {
 	err := rpc.Register(api)
 
 	if err != nil {
-		log.Fatal("Failed to register rpc: ", err)
+		log.Fatal("Failed to register rpc:", err)
 	}
 
 	rpc.HandleHTTP()
@@ -85,22 +86,50 @@ func main() {
 	lis, err := net.Listen("tcp", ":"+portString)
 
 	if err != nil {
-		log.Fatal("Failed to listen on port "+portString+": ", err)
+		log.Fatal("Failed to listen on port "+portString+":", err)
 	}
 
-	checkTimeout()
+	CheckTimeout()
 
 	log.Println("Server started on port " + portString)
 	err = http.Serve(lis, nil)
 
 	if err != nil {
-		log.Fatal("Failed to serve: ", err)
+		log.Fatal("Failed to serve http server:", err)
 	}
 
 }
 
-// Connect to API
-func (a *API) Connect(name string, player *Player) error {
+// CheckTimeout of each client
+func CheckTimeout() {
+	ticker := time.NewTicker(pollTimeout)
+	checker := make(chan struct{})
+
+	// Asynchronous check for clients that have timed out
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				for _, c := range clients {
+					if c.LoggedIn {
+						// Check if client has timed out
+						if time.Since(c.LastPoll) > pollTimeout {
+							// Logout client
+							c.LoggedIn = false
+							log.Println("Player " + c.Name + " timed out")
+						}
+					}
+				}
+			case <-checker:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+}
+
+// Register client with server
+func (a *API) Register(name string, player *Player) error {
 	// Remove any unwanted characters
 	player.Name = strings.ReplaceAll(name, "\n", "")
 
@@ -138,33 +167,7 @@ func (a *API) Connect(name string, player *Player) error {
 	return nil
 }
 
-func checkTimeout() {
-	ticker := time.NewTicker(pollTimeout)
-	checker := make(chan struct{})
-
-	// Async loop function
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				for _, c := range clients {
-					if c.LoggedIn {
-						// Check if client has timed out
-						if time.Since(c.LastPoll) > pollTimeout {
-							// Logout client
-							c.LoggedIn = false
-							log.Println("Player " + c.Name + " timed out")
-						}
-					}
-				}
-			case <-checker:
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-}
-
+// GetState of player in server
 func (a *API) GetState(player Player, state *State) error {
 	for _, c := range clients {
 		if c.Name == player.Name {
@@ -187,6 +190,7 @@ func (a *API) GetState(player Player, state *State) error {
 	return fmt.Errorf("player \"%s\" is already logged in", player.Name)
 }
 
+// NewGame of classic two player tic-tac-toe
 func (a *API) NewGame(player Player, state *State) error {
 	// Check if player is already in game
 	for _, g := range games {
@@ -197,10 +201,13 @@ func (a *API) NewGame(player Player, state *State) error {
 			}
 		}
 	}
+	// Set player symbol to X since they will host the game
+	player.Symbol = "X"
+
 	// Create a new game struct
 	game := Game{
 		Name:       player.Name + "'s game",
-		Players:    map[string]Player{"X": player},
+		Players:    []Player{player},
 		Board:      [][]string{{" ", " ", " "}, {" ", " ", " "}, {" ", " ", " "}},
 		MaxPlayers: 2,
 	}
