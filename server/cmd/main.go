@@ -186,6 +186,28 @@ func (u *User) game() *Game {
 	return nil
 }
 
+func (g *Game) winner() *Player {
+	// Check horizontals
+	for x := 0; x < len(g.Board); x++ {
+		for _, symbol := range g.Board[x] {
+			if symbol != g.Board[0][0] {
+				break
+			}
+			return g.playerWithSymbol(symbol)
+		}
+	}
+	return nil
+}
+
+func (g *Game) playerWithSymbol(s string) *Player {
+	for _, p := range g.Players {
+		if p.Symbol == s {
+			return &p
+		}
+	}
+	return nil
+}
+
 // Register client with server
 func (a *API) Register(name string, user *User) error {
 	// Remove any unwanted characters
@@ -348,11 +370,26 @@ func (a *API) JoinGame(args []User, game *Game) error {
 
 // NewMark on tic-tac-toe board
 func (a *API) NewMark(mark Mark, unused *Game) error {
+
+	// Ensure user is registered and logged in
+	if err := mark.User.auth(); err != nil {
+		return err
+	}
+
 	// Get game user is in
 	for _, g := range games {
 		for _, p := range g.Players {
-
 			if p.Name == mark.User.Name {
+
+				// Make sure game has started
+				if g.Turn < 0 {
+					return fmt.Errorf("game has not started")
+				}
+
+				// Make sure it is your turn
+				if mark.User.Name != g.Players[g.Turn%len(g.Players)].Name {
+					return fmt.Errorf("it is not your turn")
+				}
 
 				// Make sure mark is within board
 				if mark.X >= 0 && mark.Y >= 0 && mark.X < len(g.Board) && mark.Y < len(g.Board[0]) {
@@ -361,6 +398,8 @@ func (a *API) NewMark(mark Mark, unused *Game) error {
 					spot := g.Board[mark.X][mark.Y]
 					if spot == " " {
 						g.Board[mark.X][mark.Y] = p.Symbol
+						g.Turn++
+						log.Printf("user \"%s\" marked \"%s\" at %d,%d", mark.User.Name, p.Symbol, mark.X, mark.Y)
 						return nil
 					}
 					return fmt.Errorf("mark \"%s\" already exists at %d,%d", spot, mark.X, mark.Y)
@@ -370,4 +409,23 @@ func (a *API) NewMark(mark Mark, unused *Game) error {
 		}
 	}
 	return fmt.Errorf("user \"%s\" is not in a game", mark.User.Name)
+}
+
+// QuitGame of tic-tac-toe
+func (a *API) QuitGame(user User, unused *Game) error {
+
+	// Ensure user is registered and logged in
+	if err := user.auth(); err != nil {
+		return err
+	}
+
+	// Check if user is not in game
+	if user.game() == nil {
+		return fmt.Errorf("user \"%s\" is not in game", user.Name)
+	}
+
+	user.kick()
+	log.Printf("user \"%s\" quit their game", user.Name)
+
+	return nil
 }

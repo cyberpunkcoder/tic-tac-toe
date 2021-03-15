@@ -208,10 +208,16 @@ func Render() {
 			return
 		}
 
+		if game.Turn == len(game.Board)*len(game.Board[0]) {
+			fmt.Println("IT IS A DRAW, NOBODY WINS")
+			fmt.Println("\n" + prompt)
+			return
+		}
+
 		turn := game.Players[game.Turn%len(game.Players)]
 
 		if turn.Name == user.Name {
-			prompt += " <x y coordinates>\t\t- mark spot on board (example: A 1)\n\n"
+			prompt += " < x y coordinates>\t\t- mark spot on board (example: a 1)\n\n"
 			prompt += "YOUR TURN"
 		} else {
 			prompt += "\n" + turn.Name + "'s turn ...\n"
@@ -253,6 +259,12 @@ func Input() {
 		switch cmd[0] {
 		case "exit":
 			return
+		case "quit":
+			err = server.Call("API.QuitGame", user, &Game{})
+
+			if err != nil {
+				fmt.Println("Failed to quit game:", err)
+			}
 		case "create":
 			err = server.Call("API.NewGame", user, &Game{})
 
