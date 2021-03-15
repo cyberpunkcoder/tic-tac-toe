@@ -45,6 +45,12 @@ type Player struct {
 	Symbol string
 }
 
+// Mark action in tic-tac-toe
+type Mark struct {
+	User User
+	X, Y int
+}
+
 // Lobby of users wanting to play
 type Lobby struct {
 	Users []User
@@ -169,6 +175,17 @@ func (u *User) kick() {
 	}
 }
 
+func (u *User) game() *Game {
+	for _, g := range games {
+		for _, p := range g.Players {
+			if p.Name == u.Name {
+				return g
+			}
+		}
+	}
+	return nil
+}
+
 // Register client with server
 func (a *API) Register(name string, user *User) error {
 	// Remove any unwanted characters
@@ -265,14 +282,11 @@ func (a *API) NewGame(user User, game *Game) error {
 	}
 
 	// Check if user is already in game
-	for _, g := range games {
-		for _, p := range g.Players {
-			if p.Name == user.Name {
-				log.Printf("User \"%s\" failed to create game, already in a game", p.Name)
-				return fmt.Errorf("user \"%s\" is already in a game", p.Name)
-			}
-		}
+	if user.game() != nil {
+		log.Printf("User \"%s\" failed to create game, already in a game", user.Name)
+		return fmt.Errorf("user \"%s\" is already in a game", user.Name)
 	}
+
 	// New two player game
 	game.Turn = -1
 	game.MaxPlayers = 2
@@ -330,4 +344,30 @@ func (a *API) JoinGame(args []User, game *Game) error {
 	log.Printf("User \"%s\" joined game with user \"%s\"", args[0].Name, args[1].Name)
 
 	return nil
+}
+
+// NewMark on tic-tac-toe board
+func (a *API) NewMark(mark Mark, unused *Game) error {
+	// Get game user is in
+	for _, g := range games {
+		for _, p := range g.Players {
+
+			if p.Name == mark.User.Name {
+
+				// Make sure mark is within board
+				if mark.X >= 0 && mark.Y >= 0 && mark.X < len(g.Board) && mark.Y < len(g.Board[0]) {
+
+					// Make sure spot is empty
+					spot := g.Board[mark.X][mark.Y]
+					if spot == " " {
+						g.Board[mark.X][mark.Y] = p.Symbol
+						return nil
+					}
+					return fmt.Errorf("mark \"%s\" already exists at %d,%d", spot, mark.X, mark.Y)
+				}
+				return fmt.Errorf("mark is out of bounds %d, %d", mark.X, mark.Y)
+			}
+		}
+	}
+	return fmt.Errorf("user \"%s\" is not in a game", mark.User.Name)
 }

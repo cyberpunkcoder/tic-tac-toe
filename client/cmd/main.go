@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // User registered with server
@@ -36,6 +37,12 @@ type User struct {
 type Player struct {
 	User
 	Symbol string
+}
+
+// Mark action in tic-tac-toe
+type Mark struct {
+	User User
+	X, Y int
 }
 
 // Lobby of users wanting to play
@@ -53,13 +60,17 @@ type Game struct {
 }
 
 var (
-	serverAddr = "localhost"
+	user  User
+	game  Game
+	lobby Lobby
+
+	server *rpc.Client
+
 	gamePort   = 27960
+	serverAddr = "localhost"
 	pollRate   = time.Second
-	server     *rpc.Client
-	lobby      Lobby
-	game       Game
-	user       User
+
+	alpha = "abcdefghijklmnopqrstuvwxyz"
 )
 
 func main() {
@@ -175,11 +186,11 @@ func Render() {
 		// Could have made a dynamically rendered board but this was faster haha...
 		board := "    1   2   3\n"
 		board += "  ╔═══╦═══╦═══╗\n"
-		board += "A ║ " + game.Board[0][0] + " ║ " + game.Board[0][1] + " ║ " + game.Board[0][2] + " ║\n"
+		board += "a ║ " + game.Board[0][0] + " ║ " + game.Board[0][1] + " ║ " + game.Board[0][2] + " ║\n"
 		board += "  ╠═══╬═══╬═══╣\n"
-		board += "B ║ " + game.Board[1][0] + " ║ " + game.Board[1][1] + " ║ " + game.Board[1][2] + " ║\n"
+		board += "b ║ " + game.Board[1][0] + " ║ " + game.Board[1][1] + " ║ " + game.Board[1][2] + " ║\n"
 		board += "  ╠═══╬═══╬═══╣\n"
-		board += "C ║ " + game.Board[2][0] + " ║ " + game.Board[2][1] + " ║ " + game.Board[2][2] + " ║\n"
+		board += "c ║ " + game.Board[2][0] + " ║ " + game.Board[2][1] + " ║ " + game.Board[2][2] + " ║\n"
 		board += "  ╚═══╩═══╩═══╝\n"
 
 		fmt.Println(board)
@@ -200,7 +211,7 @@ func Render() {
 		turn := game.Players[game.Turn%len(game.Players)]
 
 		if turn.Name == user.Name {
-			prompt += " <coordinates>\t\t- mark spot on board (example: A1)\n\n"
+			prompt += " <x y coordinates>\t\t- mark spot on board (example: A 1)\n\n"
 			prompt += "YOUR TURN"
 		} else {
 			prompt += "\n" + turn.Name + "'s turn ...\n"
@@ -229,6 +240,7 @@ func Render() {
 
 // Input handler function
 func Input() {
+	var err error
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		input, _ := reader.ReadString('\n')
@@ -242,7 +254,7 @@ func Input() {
 		case "exit":
 			return
 		case "create":
-			err := server.Call("API.NewGame", user, &Game{})
+			err = server.Call("API.NewGame", user, &Game{})
 
 			if err != nil {
 				fmt.Println("Failed to create game:", err)
@@ -253,7 +265,7 @@ func Input() {
 				continue
 			}
 			friend := User{strings.ReplaceAll(cmd[1], "\n", "")}
-			err := server.Call("API.JoinGame", []User{user, friend}, &Game{})
+			err = server.Call("API.JoinGame", []User{user, friend}, &Game{})
 
 			if err != nil {
 				fmt.Println("Failed to join game:", err)
@@ -261,7 +273,28 @@ func Input() {
 			}
 		case "":
 		default:
-			fmt.Println("Command", cmd[0], "not recognized")
+			// Handle coordinate input
+			if len(cmd[0]) == 1 && len(cmd[1]) == 1 {
+				xRune, yRune := rune(cmd[0][0]), rune(cmd[1][0])
+				if unicode.IsLetter(xRune) && unicode.IsNumber(yRune) {
+
+					for x, s := range alpha {
+						if s == xRune {
+							y := int(yRune-'0') - 1
+							err = server.Call("API.NewMark", Mark{user, x, y}, &Game{})
+
+							if err != nil {
+								fmt.Println("Failed to create mark:", err)
+							}
+							break
+						}
+					}
+				} else {
+					fmt.Println("Coordinates " + cmd[0] + "," + cmd[1] + " incorrectly formatted")
+				}
+			} else {
+				fmt.Println("Command", cmd[0], "not recognized")
+			}
 		}
 	}
 }
