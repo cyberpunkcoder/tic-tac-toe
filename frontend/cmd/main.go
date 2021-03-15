@@ -288,7 +288,7 @@ func Input() {
 		case "":
 		default:
 			// Handle coordinate input
-			if len(cmd[0]) == 1 && len(cmd[1]) == 1 {
+			if len(cmd) == 2 && len(cmd[0]) == 1 && len(cmd[1]) == 1 {
 				xRune, yRune := rune(cmd[0][0]), rune(cmd[1][0])
 				if unicode.IsLetter(xRune) && unicode.IsNumber(yRune) {
 
